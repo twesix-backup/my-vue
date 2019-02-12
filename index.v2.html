@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My Vue</title>
+</head>
+<body id="app">
+<form>
+    <label for="firstName">
+        First Name:
+        <input type="text" id="firstName" name="firstName" v-model="name.first">
+    </label>
+    <br>
+    <label for="lastName">
+        Last Name:
+        <input type="text" id="lastName" name="lastName" v-model="name.last">
+    </label>
+    <br>
+    <label for="age">
+        Age:
+        <input type="number" id="age" name="age" v-model="age">
+    </label>
+    <br>
+    <button v-click="increment">Increase Age by one</button>
+    <br>
+</form>
+<h3>Name: <span v-bind="name.first"></span> <span v-bind="name.last"></span></h3>
+<h3>Age: <span v-bind="age"></span> years old</h3>
+
+<hr>
+
+<p>
+    Vue main parts:
+</p>
+<ol>
+    <li>Observer: using getter and setter to observe the value changing of objects</li>
+    <li>Watcher: each watcher instance represents a link between one element and one data, watcher._update is triggered after correspond data is changed in set function</li>
+    <li>Compiler: create watcher instances, traverse the html and bind functions to correspond element changing</li>
+</ol>
+
+<p>
+    Generating process of the Vue instance:
+</p>
+<ol>
+    <li>_init(): bind all options properties to the instance and prefix the properties with $</li>
+    <li>_compile(): bind functions to element events and create watchers to watch the changes of data</li>
+    <li>_observe(): use getters and setters to listen the change of options.data, main task is to trigger watcher to update the view when data changes</li>
+</ol>
+
+<script>
+    function MyVue(options)
+    {
+        this._init(options)
+        this._compile(this.$el)
+        this._observe(this.$data)
+    }
+    MyVue.prototype._init = function(options)
+    {
+        this.$options = options
+        this.$el = document.querySelector(options.el)
+        this.$data = options.data
+        this.$methods = options.methods
+    }
+    MyVue.prototype._observe = function(data)
+    {
+        console.log(data)
+        for (let key in data)
+        {
+            if (data.hasOwnProperty(key))
+            {
+                if (key.startsWith('$$')) continue // the directives array's name of a property is adding $$ in front of the property name
+                let value = data[key]
+                let _directives = data[`$$${key}`]
+                if (typeof value === 'object')
+                {
+                    this._observe(value)
+                }
+                else
+                {
+                    Object.defineProperty
+                    (
+                        data,
+                        key,
+                        {
+                            enumerable: true,
+                            configurable: true,
+                            get: function()
+                            {
+                                console.log(`get: ${key}`)
+                                return value
+                            },
+                            set: function(newValue)
+                            {
+                                console.log(`set: ${key}`)
+                                if (value !== newValue)
+                                {
+                                    console.log(`${key} changed from ${value} to ${newValue}`)
+                                    value = newValue
+                                    _directives.forEach(function(watcher)
+                                    {
+                                        watcher._update()
+                                    })
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+    MyVue.prototype._compile = function(root)
+    {
+        let children = root.children // children is not a real array, cannot use children.forEach()
+        children = Array.prototype.slice.call(children)
+        children.forEach((child) =>
+        {
+            console.log(child)
+            if (child.children.length !== 0)
+            {
+                this._compile(child)
+            }
+            else
+            {
+                if (child.hasAttribute('v-click'))
+                {
+                    child.onclick = (e) =>
+                    {
+                        e.preventDefault()
+                        this.$methods[child.getAttribute('v-click')].call(this.$data)
+                    }
+                }
+                if (child.hasAttribute('v-bind'))
+                {
+                    let exp = child.getAttribute('v-bind').split('.')
+                    let obj = this.$data
+                    let attr = exp.pop()
+                    exp.forEach(function(segment)
+                    {
+                        obj = obj[segment]
+                    })
+                    if (obj[`$$${attr}`] === undefined) obj[`$$${attr}`] = []
+                    obj[`$$${attr}`].push
+                    (
+                        new Watcher
+                        (
+                            'text',
+                            child,
+                            'innerText',
+                            obj,
+                            attr
+                        )
+                    )
+                }
+                if (child.hasAttribute('v-model'))
+                {
+                    let exp = child.getAttribute('v-model').split('.')
+                    let obj = this.$data
+                    let attr = exp.pop()
+                    exp.forEach(function(segment)
+                    {
+                        obj = obj[segment]
+                    })
+                    if (obj[`$$${attr}`] === undefined) obj[`$$${attr}`] = []
+                    if (child.tagName === 'INPUT' || child.tagName === 'TEXTAREA')
+                    {
+                        obj[`$$${attr}`].push
+                        (
+                            new Watcher
+                            (
+                                'input',
+                                child,
+                                'value',
+                                obj,
+                                attr
+                            )
+                        )
+                    }
+                    else
+                    {
+                        obj[`$$${attr}`].push
+                        (
+                            new Watcher
+                            (
+                                'text',
+                                child,
+                                'innerText',
+                                obj,
+                                attr
+                            )
+                        )
+                    }
+                    child.addEventListener('input', (e) =>
+                    {
+                        obj[attr] = child.value
+                    })
+                }
+            }
+        })
+    }
+
+    function Watcher(name, el, prop, obj, attr)
+    {
+        this.name = name
+        this.el = el
+        this.prop = prop
+        this.obj = obj
+        this.attr = attr
+
+        this._update()
+    }
+
+    Watcher.prototype._update = function()
+    {
+        this.el[this.prop]  = this.obj[this.attr]
+    }
+
+    const app= new MyVue
+    (
+        {
+            el: '#app',
+            data:
+                {
+                    age: 23,
+                    name:
+                        {
+                            first: 'meng',
+                            last: 'zhengyuan',
+                        }
+                },
+            methods:
+                {
+                    increment: function()
+                    {
+                        this.age ++
+                    }
+                }
+        }
+    )
+</script>
+</body>
+</html>
